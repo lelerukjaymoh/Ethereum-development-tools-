@@ -27,7 +27,7 @@ export interface WalletTransport extends JsonRpcHandler, ProviderMessageTranspor
   notifyClose(error?: ProviderRpcError): void
 
   notifyConnect(connectDetails: ConnectDetails): void
-  notifyAccountsChanged(accounts: string[]): void
+  notifyAccountsChanged(accounts: string[], origin?: string): void
   notifyChainChanged(chainIdHex: string): void
   notifyNetworks(networks: NetworkConfig[]): void
 }
@@ -111,7 +111,7 @@ export interface WalletEventTypes {
   connect: (connectDetails: ConnectDetails) => void
   disconnect: (error?: ProviderRpcError) => void
 
-  accountsChanged: (accounts: string[]) => void
+  accountsChanged: (accounts: string[], origin?: string) => void
   chainChanged: (chainIdHex: string) => void
 
   networks: (networks: NetworkConfig[]) => void
@@ -165,6 +165,9 @@ export interface ConnectOptions {
 
   /** Options to further customize the wallet experience. */
   settings?: Settings
+
+  /** walletConnectConnection, to specify if connection is via WalletConnect */
+  walletConnectConnection?: boolean
 }
 
 /** Options to further customize the wallet experience. */
@@ -234,6 +237,16 @@ export type OpenWalletIntent =
   | { type: 'connect'; options?: ConnectOptions }
   | { type: 'openWithOptions'; options?: ConnectOptions }
   | { type: 'jsonRpcRequest'; method: string }
+
+export type DappConnectionType = 'WALLET_CONNECT' | 'BROSWER_EXTENSION' | 'SEQUENCE_INTEGRATION'
+
+export interface ConnectedDapp {
+  app: string
+  origin: string
+  chainId: string
+  connectionType: DappConnectionType
+  connectedAt: Date
+}
 
 export interface MessageToSign {
   message?: string

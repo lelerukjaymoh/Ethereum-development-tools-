@@ -55,9 +55,10 @@ export abstract class BaseWalletTransport implements WalletTransport {
       this.notifyDisconnect(error)
     })
 
-    this.walletRequestHandler.on('accountsChanged', (accounts: string[]) => {
+    this.walletRequestHandler.on('accountsChanged', (accounts: string[], origin?: string) => {
       if (!this.registered) return
-      this.notifyAccountsChanged(accounts)
+      console.log('this.walletRequestHandler.on(accountsChanged', accounts, origin)
+      this.notifyAccountsChanged(accounts, origin)
     })
 
     this.walletRequestHandler.on('networks', (networks: NetworkConfig[]) => {
@@ -206,11 +207,12 @@ export abstract class BaseWalletTransport implements WalletTransport {
     })
   }
 
-  notifyAccountsChanged(accounts: string[]) {
+  notifyAccountsChanged(accounts: string[], origin?: string) {
+    console.log('notifyAccountsChanged in BaseWalletTransport', accounts, origin)
     this.sendMessage({
       idx: -1,
       type: EventType.ACCOUNTS_CHANGED,
-      data: accounts
+      data: { accounts: accounts, origin: origin }
     })
   }
 

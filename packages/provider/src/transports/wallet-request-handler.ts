@@ -7,6 +7,7 @@ import {
   MessageToSign,
   ProviderRpcError,
   ConnectOptions,
+  ConnectedDapp,
   ConnectDetails,
   PromptConnectDetails,
   WalletSession,
@@ -32,7 +33,8 @@ import { isSignedTransactions, TransactionRequest } from '@0xsequence/transactio
 import { signAuthorization, AuthorizationOptions } from '@0xsequence/auth'
 import { logger, TypedData } from '@0xsequence/utils'
 
-import { isWalletUpToDate } from '../utils'
+import { isWalletUpToDate, isBrowserExtension } from '../utils'
+import { LOCAL_STORAGE_KEYS } from '../constants'
 
 const SIGNER_READY_TIMEOUT = 10000
 
@@ -110,7 +112,7 @@ export class WalletRequestHandler implements ExternalProvider, JsonRpcHandler, P
       const connectOptions = this._connectOptions
 
       const connectDetails = await this.connect(connectOptions)
-      this.notifyConnect(connectDetails)
+      this.notifyConnect(connectDetails, connectOptions?.origin)
 
       if (!connectOptions || connectOptions.keepWalletOpened !== true) {
         this.notifyClose()
@@ -156,7 +158,7 @@ export class WalletRequestHandler implements ExternalProvider, JsonRpcHandler, P
 
     const connectDetails: ConnectDetails = {
       connected: true,
-      chainId: ethers.utils.hexlify(await this.getChainId())
+      chainId: ethers.utils.hexlify(options?.networkId ?? (await this.getChainId()))
     }
 
     if (options && options.authorize) {
@@ -207,6 +209,20 @@ export class WalletRequestHandler implements ExternalProvider, JsonRpcHandler, P
     const connectDetails: ConnectDetails = promptConnectDetails
     if (connectDetails.connected && !connectDetails.session) {
       connectDetails.session = await this.walletSession()
+    }
+
+    if (connectDetails.connected) {
+      this.saveConnectedDapp({
+        app: options!.app!,
+        origin: options!.origin!,
+        chainId: connectDetails.chainId!,
+        connectionType: !!options!.walletConnectConnection
+          ? 'WALLET_CONNECT'
+          : isBrowserExtension()
+          ? 'BROSWER_EXTENSION'
+          : 'SEQUENCE_INTEGRATION',
+        connectedAt: new Date()
+      })
     }
 
     return promptConnectDetails
@@ -705,17 +721,16 @@ export class WalletRequestHandler implements ExternalProvider, JsonRpcHandler, P
         }
   }
 
-  notifyConnect(connectDetails: ConnectDetails) {
+  notifyConnect(connectDetails: ConnectDetails, origin?: string) {
     this.events.emit('connect', connectDetails)
     if (connectDetails.session?.accountAddress) {
-      this.events.emit('accountsChanged', [connectDetails.session?.accountAddress])
+      this.events.emit('accountsChanged', [connectDetails.session?.accountAddress], origin)
     }
   }
 
-  notifyDisconnect() {
-    this.events.emit('accountsChanged', [])
-    this.events.emit('networks', [])
-    this.events.emit('disconnect')
+  notifyDisconnect(origin?: string) {
+    console.log('notifyDisconnect in walletReqHnadler', origin)
+    this.events.emit('accountsChanged', [], origin)
   }
 
   async notifyNetworks(networks?: NetworkConfig[]) {
@@ -791,6 +806,14 @@ export class WalletRequestHandler implements ExternalProvider, JsonRpcHandler, P
       }
     }
     return false
+  }
+
+  private saveConnectedDapp = (connectedDapp: ConnectedDapp) => {
+    const connectedDappsKey = LOCAL_STORAGE_KEYS.CONNECTED_DAPPS
+    const data = window.localStorage.getItem(connectedDappsKey)
+    const connectedDapps: ConnectedDapp[] = data ? JSON.parse(data) : []
+    connectedDapps.push(connectedDapp)
+    window.localStorage.setItem(connectedDappsKey, JSON.stringify(connectedDapps))
   }
 }
 

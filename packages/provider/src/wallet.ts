@@ -30,13 +30,13 @@ import { logger } from '@0xsequence/utils'
 import { JsonRpcProvider, JsonRpcSigner, ExternalProvider } from '@ethersproject/providers'
 import { Web3Provider, Web3Signer } from './provider'
 import { MuxMessageProvider, WindowMessageProvider, ProxyMessageProvider, ProxyMessageChannelPort } from './transports'
-import { WalletSession, ProviderEventTypes, ConnectOptions, OpenWalletIntent, ConnectDetails } from './types'
+import { WalletSession, ProviderEventTypes, ConnectOptions, OpenWalletIntent, ConnectDetails, ConnectedDapp } from './types'
 import { ethers } from 'ethers'
 import { ExtensionMessageProvider } from './transports/extension-transport/extension-message-provider'
-import { LocalStore } from './utils'
 import { WalletUtils } from './utils/index'
 
 import { Runtime } from 'webextension-polyfill-ts'
+import { LOCAL_STORAGE_KEYS } from './constants'
 
 export interface WalletProvider {
   connect(options?: ConnectOptions): Promise<ConnectDetails>
@@ -77,8 +77,6 @@ export class Wallet implements WalletProvider {
   private config: ProviderConfig
   private session?: WalletSession
 
-  private connectedSites: LocalStore<string[]>
-
   private transport: {
     // top-level provider which connects all transport layers
     provider?: Web3Provider
@@ -115,7 +113,6 @@ export class Wallet implements WalletProvider {
     this.transport = {}
     this.networks = []
     this.providers = {}
-    this.connectedSites = new LocalStore('@sequence.connectedSites', [])
     this.utils = new WalletUtils(this)
     this.init()
   }
@@ -143,7 +140,7 @@ export class Wallet implements WalletProvider {
       this.transport.extensionMessageProvider = new ExtensionMessageProvider(this.config.transports.extensionTransport.runtime)
       // this.transport.extensionMessageProvider.register()
       this.transport.messageProvider.add(this.transport.extensionMessageProvider)
-      
+
       // NOTE/REVIEW: see note in mux-message-provider
       //
       // We don't add the extensionMessageProvider here because we don't send requests to it anyways, we seem to
@@ -215,7 +212,7 @@ export class Wallet implements WalletProvider {
     })
 
     // below will update the account upon wallet connect/disconnect (aka, login/logout)
-    this.transport.messageProvider.on('accountsChanged', (accounts: string[]) => {
+    this.transport.messageProvider.on('accountsChanged', (accounts: string[], origin?: string) => {
       if (!accounts || accounts.length === 0 || accounts[0] === '') {
         this.clearSession()
       } else {
@@ -273,8 +270,6 @@ export class Wallet implements WalletProvider {
     if (connectDetails.connected) {
       if (!!connectDetails.session) {
         this.useSession(connectDetails.session, true)
-
-        this.addConnectedSite(options?.origin)
       } else {
         throw new Error('impossible state, connect response is missing session')
       }
@@ -283,37 +278,12 @@ export class Wallet implements WalletProvider {
     return connectDetails
   }
 
-  addConnectedSite(origin: string | undefined) {
-    origin = origin || window.location.origin
-
-    const connectedSites = this.connectedSites.get()
-
-    if (connectedSites) {
-      if (connectedSites.includes(origin)) {
-        return
-      }
-      this.connectedSites.set([...connectedSites, origin])
-    } else {
-      this.connectedSites.set([origin])
-    }
-  }
-
-  removeConnectedSite(origin: string) {
-    const authorized = this.connectedSites.get()
-
-    if (authorized) {
-      this.connectedSites.set(authorized.filter(domain => domain !== origin))
-    }
-  }
-
-  getConnectedSites() {
-    return this.connectedSites.get()
-  }
-
   private isSiteConnected(origin: string | undefined): boolean {
-    const authorized = this.connectedSites.get()
-
-    return !!authorized && authorized.includes(origin || window.location.origin)
+    if (!origin) return false
+    const connectedDappsKey = LOCAL_STORAGE_KEYS.CONNECTED_DAPPS
+    const data = window.localStorage.getItem(connectedDappsKey)
+    const connectedDapps: ConnectedDapp[] = data ? JSON.parse(data) : []
+    return connectedDapps.map(dapp => dapp.origin).includes(origin)
   }
 
   authorize = async (options?: ConnectOptions): Promise<ConnectDetails> => {
